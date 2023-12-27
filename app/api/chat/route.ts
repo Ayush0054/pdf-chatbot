@@ -1,52 +1,79 @@
 import { NextRequest } from "next/server";
-import { PineconeClient } from "@pinecone-database/pinecone";
+import { Pinecone } from "@pinecone-database/pinecone";
 import { PineconeStore } from "langchain/vectorstores/pinecone";
-import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { OpenAI } from "langchain/llms/openai";
-import { VectorDBQAChain } from "langchain/chains";
+import { TaskType } from "@google/generative-ai";
+
+import {
+  RetrievalQAChain,
+  VectorDBQAChain,
+  loadQAMapReduceChain,
+} from "langchain/chains";
 import { StreamingTextResponse, LangChainStream } from "ai";
-import { CallbackManager } from "langchain/callbacks";
+
+import {
+  ChatGoogleGenerativeAI,
+  GoogleGenerativeAIEmbeddings,
+} from "@langchain/google-genai";
 
 export async function POST(request: NextRequest) {
-  // Parse the POST request's JSON body
   const body = await request.json();
 
-  // Use Vercel's `ai` package to setup a stream
   const { stream, handlers } = LangChainStream();
 
-  // Initialize Pinecone Client
-  const pineconeClient = new PineconeClient();
-  await pineconeClient.init({
+  const pineconeClient = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY ?? "",
     environment: "gcp-starter",
   });
+
   const pineconeIndex = pineconeClient.Index(
     process.env.PINECONE_INDEX_NAME as string
   );
 
-  // Initialize our vector store
   const vectorStore = await PineconeStore.fromExistingIndex(
-    new OpenAIEmbeddings(),
+    new GoogleGenerativeAIEmbeddings({
+      apiKey: process.env.GOOGLE_API_KEY ?? "",
+      // title: "One",
+      modelName: "embedding-001",
+      taskType: TaskType.RETRIEVAL_DOCUMENT,
+    }),
     //@ts-ignore
     { pineconeIndex }
   );
-
-  // Specify the OpenAI model we'd like to use, and turn on streaming
-  const model = new OpenAI({
-    modelName: "gpt-3.5-turbo",
-    streaming: true,
-    callbackManager: CallbackManager.fromHandlers(handlers),
+  const results = await vectorStore.similaritySearch("java", 1, {
+    blobType: "application/pdf",
   });
+  console.log(results);
+  // console.log(pineconeIndex);
 
+  // console.log("vectorStore", vectorStore);
+
+  const model = new ChatGoogleGenerativeAI({
+    apiKey: process.env.GOOGLE_API_KEY ?? "",
+    temperature: 0.7,
+    modelName: "gemini-pro",
+    topK: 40,
+    topP: 1,
+    maxOutputTokens: 2048,
+    // callbackManager: CallbackManager.fromHandlers(handlers),
+  });
   // Define the Langchain chain
+  //@ts-ignore
   const chain = VectorDBQAChain.fromLLM(model, vectorStore, {
-    k: 1,
+    // k: 1,
     returnSourceDocuments: true,
   });
 
+  console.log("chain-----------------------:", chain);
+
+  // Inside the POST function
+  console.log("Executing chain with prompt:", body.prompt);
+
   // Call our chain with the prompt given by the user
-  chain.call({ query: body.prompt }).catch(console.error);
+  const result = await chain.call({ query: body.prompt }).catch(console.error);
+  console.log("Chain execution result:", result);
+  console.log(stream);
 
   // Return an output stream to the frontend
-  return new StreamingTextResponse(stream);
+  //@ts-ignore
+  return new StreamingTextResponse(result.text);
 }

@@ -1,8 +1,10 @@
 import { PDFLoader } from "langchain/document_loaders/fs/pdf";
 import { NextRequest, NextResponse } from "next/server";
-import { PineconeClient } from "@pinecone-database/pinecone";
-import { OpenAIEmbeddings } from "langchain/embeddings/openai";
+import { Pinecone } from "@pinecone-database/pinecone";
+import { TaskType } from "@google/generative-ai";
+
 import { PineconeStore } from "langchain/vectorstores/pinecone";
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 
 export async function POST(request: NextRequest) {
   // Extract FormData from the request
@@ -25,20 +27,33 @@ export async function POST(request: NextRequest) {
   const splitDocuments = await pdfLoader.loadAndSplit();
 
   // Initialize the Pinecone client
-  const pineconeClient = new PineconeClient();
-  await pineconeClient.init({
+  const pineconeClient = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY ?? "",
     environment: "gcp-starter",
   });
+  //@ts-ignore
+  // await pineconeClient.init({
+  //   apiKey: process.env.PINECONE_API_KEY ?? "",
+  //   environment: "gcp-starter",
+  // });
   const pineconeIndex = pineconeClient.Index(
     process.env.PINECONE_INDEX_NAME as string
   );
 
   // Use Langchain's integration with Pinecone to store the documents
-  await PineconeStore.fromDocuments(splitDocuments, new OpenAIEmbeddings(), {
-    //@ts-ignore
-    pineconeIndex,
-  });
+  await PineconeStore.fromDocuments(
+    splitDocuments,
+    new GoogleGenerativeAIEmbeddings({
+      apiKey: process.env.GOOGLE_API_KEY ?? "",
+      // title: "One",
+      modelName: "embedding-001",
+      taskType: TaskType.RETRIEVAL_DOCUMENT,
+    }),
+    {
+      pineconeIndex,
+    }
+  );
+  console.log("success", splitDocuments);
 
   return NextResponse.json({ success: true });
 }
