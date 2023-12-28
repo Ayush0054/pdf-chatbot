@@ -3,21 +3,18 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { PineconeStore } from "langchain/vectorstores/pinecone";
 import { TaskType } from "@google/generative-ai";
 
-import {
-  RetrievalQAChain,
-  VectorDBQAChain,
-  loadQAMapReduceChain,
-} from "langchain/chains";
+import { loadQAChain } from "langchain/chains";
 import { StreamingTextResponse, LangChainStream } from "ai";
 
 import {
   ChatGoogleGenerativeAI,
   GoogleGenerativeAIEmbeddings,
 } from "@langchain/google-genai";
+import { PromptTemplate } from "langchain/prompts";
+import { CallbackManager } from "langchain/callbacks";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-
   const { stream, handlers } = LangChainStream();
 
   const pineconeClient = new Pinecone({
@@ -33,47 +30,63 @@ export async function POST(request: NextRequest) {
     new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GOOGLE_API_KEY ?? "",
       // title: "One",
-      modelName: "embedding-001",
-      taskType: TaskType.RETRIEVAL_DOCUMENT,
+      modelName: "models/embedding-001",
+      // taskType: TaskType.RETRIEVAL_DOCUMENT,
     }),
     //@ts-ignore
     { pineconeIndex }
   );
-  const results = await vectorStore.similaritySearch("java", 1, {
-    blobType: "application/pdf",
-  });
-  console.log(results);
-  // console.log(pineconeIndex);
-
-  // console.log("vectorStore", vectorStore);
+  const vectorStoreRetrieval = vectorStore.asRetriever();
+  const docs = await vectorStoreRetrieval.getRelevantDocuments(body.prompt);
+  console.log("docs", docs);
 
   const model = new ChatGoogleGenerativeAI({
     apiKey: process.env.GOOGLE_API_KEY ?? "",
     temperature: 0.7,
     modelName: "gemini-pro",
-    topK: 40,
-    topP: 1,
-    maxOutputTokens: 2048,
-    // callbackManager: CallbackManager.fromHandlers(handlers),
+    // topK: 40,
+    // topP: 1,
+    // maxOutputTokens: 2048,
+    callbackManager: CallbackManager.fromHandlers(handlers),
   });
-  // Define the Langchain chain
+  const promptTemplate = `
+  Please answer the question in as much detail as possible based on the provided context.
+  Ensure to include all relevant details.
+
+  Context:
+  {context}?
+
+  Question:
+  {question}
+
+  Answer:
+`;
+  const prompt = new PromptTemplate({
+    template: promptTemplate,
+    inputVariables: ["context", "question"],
+  });
+
   //@ts-ignore
-  const chain = VectorDBQAChain.fromLLM(model, vectorStore, {
+  const chain = loadQAChain(model, {
     // k: 1,
-    returnSourceDocuments: true,
+    type: "stuff",
+    prompt: prompt,
   });
 
-  console.log("chain-----------------------:", chain);
+  // console.log("chain-----------------------:", chain);
 
-  // Inside the POST function
-  console.log("Executing chain with prompt:", body.prompt);
+  // console.log("Executing chain with prompt:", body.prompt);
 
-  // Call our chain with the prompt given by the user
-  const result = await chain.call({ query: body.prompt }).catch(console.error);
-  console.log("Chain execution result:", result);
-  console.log(stream);
-
-  // Return an output stream to the frontend
   //@ts-ignore
-  return new StreamingTextResponse(result.text);
+  const result = await chain.call({
+    input_documents: docs,
+    query: body.prompt,
+    question: `${body.prompt}}`,
+  });
+
+  // console.log("Chain execution result:", result);
+  // console.log(stream);
+
+  //@ts-ignore
+  return new StreamingTextResponse(stream);
 }

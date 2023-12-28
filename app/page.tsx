@@ -21,12 +21,8 @@ export default function Home() {
       method: "POST",
       body: formData,
     });
-    console.log(response);
 
     const body = await response.json();
-    console.log("body");
-
-    console.log(body);
 
     if (body.success) {
       alert("Data added successfully");
@@ -43,7 +39,6 @@ export default function Home() {
     useCompletion({
       api: "/api/chat",
     });
-  console.log(completion);
 
   return (
     <main className="flex min-h-screen flex-col items-center p-24">
@@ -75,7 +70,8 @@ export default function Home() {
           </button>
 
           <p className="text-center">
-            Completion result: {completion === "" ? "Thinking..." : completion}
+            <span className="font-bold">Completion result:</span>{" "}
+            {completion === "" ? "Thinking..." : completion}
           </p>
         </form>
       </div>
