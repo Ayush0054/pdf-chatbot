@@ -1,7 +1,7 @@
-### Tech Stack
+## Tech Stack
 
-## next/ts google gemini ai , pinecone vector db , langchain
+### next/ts google gemini ai , pinecone vector db , langchain
 
-### Screenshot
+## Screenshot
 
 ![Alt text](image.png)
