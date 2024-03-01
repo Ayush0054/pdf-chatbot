@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { useCompletion } from "ai/react";
+import Markdown from "react-markdown";
 
 export default function Home() {
   // When a file is dropped in the dropzone, call the `/api/addData` API to train our bot on a new PDF File
@@ -69,10 +70,10 @@ export default function Home() {
             Submit
           </button>
 
-          <p className="text-center">
-            <span className="font-bold">Completion result:</span>{" "}
+          <Markdown className="text-center">
+            {/* <span className="font-bold">Completion result:</span>{" "} */}
             {completion === "" ? "Thinking..." : completion}
-          </p>
+          </Markdown>
         </form>
       </div>
     </main>
